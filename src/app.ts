@@ -1,0 +1,53 @@
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import testRoutes from './routes/test';
+
+const app = express();
+const server = createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: process.env.NODE_ENV === 'production' ? false : ['http://localhost:3000'],
+    methods: ['GET', 'POST']
+  }
+});
+
+// Middleware
+app.use(helmet());
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' ? false : ['http://localhost:3000']
+}));
+app.use(morgan('combined'));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Make socket.io instance available to routes
+app.set('io', io);
+
+// Routes
+app.use('/api/tests', testRoutes);
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Socket.io connection handling
+io.on('connection', (socket) => {
+  console.log('Client connected:', socket.id);
+  
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
+});
+
+const PORT = process.env.PORT || 3001;
+
+server.listen(PORT, () => {
+  console.log(`Scout server running on port ${PORT}`);
+});
+
+export default app;
