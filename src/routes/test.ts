@@ -1,10 +1,14 @@
 import express from 'express';
 import { Server } from 'socket.io';
-import { TestSequence, TestExecution } from '../types';
+import { TestSequence, TestExecution, FailureContext, ECUType } from '../types';
 import { DoIPSimulator } from '../services/doipSimulator';
+import { FailureAnalysisService } from '../services/failureAnalysis';
+import { ECUManager } from '../services/ecuManager';
 
 const router = express.Router();
 const simulator = DoIPSimulator.getInstance();
+const failureAnalysis = FailureAnalysisService.getInstance();
+const ecuManager = ECUManager.getInstance();
 
 // Store active test executions
 const activeExecutions = new Map<string, TestExecution>();
@@ -68,9 +72,9 @@ router.post('/execute', async (req, res) => {
         execution.result = result;
         execution.progress = 100;
         
-        // TODO: Add similar failure analysis here
+        // Enhanced failure analysis
         if (result.status === 'failure') {
-          execution.similarFailures = await findSimilarFailures(result);
+          execution.similarFailures = await performEnhancedFailureAnalysis(result, sequence);
         }
 
         io.emit('executionUpdate', execution);
@@ -109,28 +113,54 @@ router.get('/executions/:id', (req, res) => {
   return res.json(execution);
 });
 
-// Mock function for similar failure analysis (to be implemented with vector DB)
-async function findSimilarFailures(result: any) {
-  // Mock similar failures for demo
-  const mockSimilarFailures = [
-    {
-      testResultId: 'result_1234567890',
-      similarity: 0.85,
-      suggestion: 'Check ECU power supply. Similar issue resolved by power cycle.',
-      resolvedBy: 'John Doe'
-    },
-    {
-      testResultId: 'result_0987654321',
-      similarity: 0.72,
-      suggestion: 'Verify CAN bus termination. Previous ticket #JIRA-123 had same symptoms.',
-      resolvedBy: 'Jane Smith'
-    }
-  ];
+// Enhanced failure analysis function
+async function performEnhancedFailureAnalysis(result: any, sequence: TestSequence) {
+  if (result.status !== 'failure') return [];
+
+  // Find the failed message in the sequence
+  const failedMessageIndex = result.actualResponses?.length || 0;
+  const failedMessage = sequence.messages[failedMessageIndex];
   
-  // Simulate processing delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  if (!failedMessage) return [];
+
+  // Get ECU information
+  const ecu = ecuManager.getECU(failedMessage.targetECU);
+  const ecuType = ecu?.type || ECUType.ENGINE;
+
+  // Create failure context
+  const context: FailureContext = {
+    service: failedMessage.service,
+    subFunction: failedMessage.subFunction,
+    targetECU: failedMessage.targetECU,
+    ecuType: ecuType,
+    sequencePosition: failedMessageIndex,
+    timing: result.duration || 0,
+    previousResponses: result.actualResponses || [],
+    ecuState: ecu
+  };
+
+  // Perform enhanced failure analysis
+  const similarFailures = await failureAnalysis.analyzeSimilarFailures(result, context);
   
-  return result.status === 'failure' ? mockSimilarFailures : [];
+  // Simulate some processing delay for realism
+  await new Promise(resolve => setTimeout(resolve, 800));
+  
+  return similarFailures;
 }
+
+// Add new endpoint to get ECU status
+router.get('/ecus', (req, res) => {
+  const ecus = ecuManager.getAllECUs();
+  res.json(ecus);
+});
+
+// Add new endpoint to get specific ECU status
+router.get('/ecus/:id', (req, res) => {
+  const ecu = ecuManager.getECU(req.params.id!);
+  if (!ecu) {
+    return res.status(404).json({ error: 'ECU not found' });
+  }
+  return res.json(ecu);
+});
 
 export default router;

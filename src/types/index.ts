@@ -30,6 +30,61 @@ export interface SimilarFailure {
   similarity: number;
   suggestion: string;
   resolvedBy?: string;
+  failureCategory: FailureCategory;
+  confidence: number;
+  resolutionSteps?: string[];
+  estimatedFixTime?: number;
+}
+
+export enum FailureCategory {
+  CONNECTIVITY = 'connectivity',
+  PROTOCOL = 'protocol',
+  ECU_SPECIFIC = 'ecu_specific',
+  ENVIRONMENTAL = 'environmental',
+  SECURITY = 'security',
+  TIMING = 'timing'
+}
+
+export enum ECUType {
+  ENGINE = 'engine',
+  TRANSMISSION = 'transmission', 
+  BODY = 'body',
+  GATEWAY = 'gateway',
+  ABS = 'abs',
+  AIRBAG = 'airbag'
+}
+
+export interface ECUState {
+  id: string;
+  type: ECUType;
+  status: 'online' | 'offline' | 'degraded';
+  temperature?: number;
+  voltage?: number;
+  lastResponse?: Date;
+  errorCodes?: string[];
+  securityLevel?: number;
+}
+
+export interface FailureContext {
+  service: string;
+  subFunction: string;
+  targetECU: string;
+  ecuType: ECUType;
+  sequencePosition: number;
+  timing: number;
+  previousResponses: DoIPMessage[];
+  ecuState: ECUState | undefined;
+}
+
+export interface FailurePattern {
+  id: string;
+  category: FailureCategory;
+  pattern: string;
+  description: string;
+  commonCauses: string[];
+  resolutionSteps: string[];
+  averageFixTime: number;
+  successRate: number;
 }
 
 export interface TestExecution {
